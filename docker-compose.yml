@@ -134,6 +134,16 @@ services:
     mem_limit: 2g
     profiles:
       - bonus
+# ===== CONTENEUR DE BUILD (Test final du tag 2.12) =====
+  spark-sbt:
+    build: .
+    container_name: spark-sbt
+    volumes:
+      - ./spark-job:/opt/spark-job
+    working_dir: /opt/spark-job
+    networks:
+      - oncostream-net
+    command: tail -f /dev/null
 
 volumes:
   kafka_data:

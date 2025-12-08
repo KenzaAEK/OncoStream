@@ -11,3 +11,13 @@ __pycache__/
 *.log
 .DS_Store
 .vscode/cd
+
+# Environnement de compilation SBT (CRITIQUE)
+target/
+
+# Dossiers temporaires et fichiers de cache
+project/target/
+
+# Fichiers auto-générés
+*.class
+*.log
