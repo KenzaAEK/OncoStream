@@ -1,0 +1,13 @@
+# Environnement Virtuel
+.venv/
+venv/
+env/
+
+# Fichiers compilés Python (inutiles)
+__pycache__/
+*.pyc
+
+# Logs et données temporaires
+*.log
+.DS_Store
+.vscode/cd

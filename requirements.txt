@@ -1,0 +1,14 @@
+kafka-python-ng
+faker  # Pour générer des noms de patients réalistes plus tard
+numpy  # Pour simuler des stats biologiques
+
+# Instructions pour créer un environnement virtuel Python et installer les dépendances
+
+# 1. Va dans le dossier du générateur
+#cd data-generator
+
+# 2. Crée l'environnement virtuel (on l'appelle souvent ".venv" ou "venv")
+#python -m venv .venv
+
+# 3. Active-le (Tu dois voir (.venv) apparaître au début de ta ligne de commande)
+#.\.venv\Scripts\Activate
