@@ -28,11 +28,14 @@ object OncoStreamApp {
     import spark.implicits._
     val dataStream = kafkaStream.selectExpr("CAST(value AS STRING) as fastq_data")
 
-    // 4. L'Affichage : Écrire le résultat dans la console
+    // 4. LE STOCKAGE : Écriture dans HDFS au format Parquet
     val query = dataStream.writeStream
-      .outputMode("append") // On ajoute chaque nouvelle ligne reçue
-      .format("console")    // Sortie = Écran noir
-      .option("truncate", "false") // Affiche toute la ligne sans couper
+      .outputMode("append")
+      .format("parquet") // Format optimisé Big Data
+      // L'adresse du Namenode (définie dans docker-compose)
+      .option("path", "hdfs://namenode:9000/oncostream/raw_data")
+      // OBLIGATOIRE : Spark doit noter où il s'est arrêté pour ne pas perdre de données
+      .option("checkpointLocation", "hdfs://namenode:9000/oncostream/checkpoints/raw")
       .start()
 
     // Garde le programme allumé indéfiniment
