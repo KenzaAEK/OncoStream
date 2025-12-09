@@ -7,9 +7,7 @@ object OncoStreamApp {
     val spark = SparkSession.builder()
       .appName("OncoStream-Ingestion")
       // "local[*]" signifie : Utilise tous les cœurs de MON processeur (mode test)
-      .master("spark://spark-master:7077")
-      .config("spark.executor.memory", "1g")
-      .config("spark.executor.cores", "1")
+      .master("local[*]")
       .getOrCreate()
 
     // On réduit le bruit (logs) pour ne voir que les erreurs ou les données

@@ -6,14 +6,24 @@ scalaVersion := "2.12.18"
 
 val sparkVersion = "3.5.3"
 
+// 1. ISOLATION (Règle le crash ClassCastException)
+fork := true
+
+// 2. PERMISSIONS JAVA 11+ (Indispensable pour éviter les erreurs d'accès mémoire)
+javaOptions ++= Seq(
+  "--add-opens=java.base/java.nio=ALL-UNNAMED",
+  "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+  "--add-opens=java.base/java.lang=ALL-UNNAMED"
+)
+
 libraryDependencies ++= Seq(
-  // 1. Le Cerveau Spark (Core + SQL)
+  // Le Cerveau Spark
   "org.apache.spark" %% "spark-core" % sparkVersion,
   "org.apache.spark" %% "spark-sql" % sparkVersion,
   
-  // 2. L'Oreille (Pour écouter Kafka)
+  // L'Oreille Kafka
   "org.apache.spark" %% "spark-sql-kafka-0-10" % sparkVersion,
   
-  // 3. Les Outils (Logging pour éviter le spam dans la console)
+  // Logging
   "ch.qos.logback" % "logback-classic" % "1.2.11"
 )

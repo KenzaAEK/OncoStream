@@ -90,6 +90,7 @@ services:
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
       - ./projet:/opt/spark/work
+      - ./spark-job:/opt/spark/work
     networks:
       - oncostream-net
     mem_limit: 2g
@@ -108,6 +109,7 @@ services:
       - spark-master
     volumes:
       - ./projet:/opt/spark/work
+      - ./spark-job:/opt/spark/work
     networks:
       - oncostream-net
     mem_limit: 2g
@@ -134,12 +136,13 @@ services:
     mem_limit: 2g
     profiles:
       - bonus
-# ===== CONTENEUR DE BUILD (Test final du tag 2.12) =====
+# ===== CONTENEUR DE BUILD =====
   spark-sbt:
     build: .
     container_name: spark-sbt
     volumes:
       - ./spark-job:/opt/spark-job
+      - sbt_cache:/root/.sbt
     working_dir: /opt/spark-job
     networks:
       - oncostream-net
@@ -149,3 +152,5 @@ volumes:
   kafka_data:
   namenode_data:
   datanode_data:
+  sbt_cache:
+  ivy_cache:
