@@ -114,19 +114,22 @@ services:
       - oncostream-net
     mem_limit: 2g
 
-  # ===== 4. BONUS HBASE (Activé seulement si profil 'bonus') =====
+# ===== 4. BONUS HBASE (Activé seulement si profil 'bonus') =====
   hbase:
     image: harisekhon/hbase:2.1
     container_name: hbase
     hostname: hbase
     environment:
+      # CONFIGURATION ZOOKEEPER 
+      - HBASE_MANAGES_ZK=false       # HBase gère son propre Zookeeper interne                        
+      - HBASE_CONF_hbase_zookeeper_quorum=zookeeper         
+      - HBASE_CONF_hbase_zookeeper_property_clientPort=2181
+      # Configuration Stockage
       - HBASE_CONF_hbase_rootdir=hdfs://namenode:9000/hbase
       - HBASE_CONF_hbase_cluster_distributed=true
-      - HBASE_CONF_hbase_zookeeper_quorum=zookeeper:2181
-      - HBASE_MANAGES_ZK=false
     ports:
-      - "16010:16010"
-      - "9090:9090"
+      - "16010:16010" # Web UI
+      - "9090:9090" # Thrift
     depends_on:
       - zookeeper
       - namenode
