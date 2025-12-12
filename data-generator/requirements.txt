@@ -1,6 +1,10 @@
 kafka-python-ng
 faker  # Pour générer des noms de patients réalistes plus tard
 numpy  # Pour simuler des stats biologiques
+streamlit 
+happybase
+pandas
+datetime
 
 # Instructions pour créer un environnement virtuel Python et installer les dépendances
 
