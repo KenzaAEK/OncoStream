@@ -1,5 +1,11 @@
 [0m[[0m[0mdebug[0m] [0m[0mPackaging /opt/spark-job/target/scala-2.12/oncostream_2.12-1.0.jar ...[0m
 [0m[[0m[0mdebug[0m] [0m[0mInput file mappings:[0m
+[0m[[0m[0mdebug[0m] [0m[0m	OncoStreamApp$$typecreator1$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /opt/spark-job/target/scala-2.12/classes/OncoStreamApp$$typecreator1$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	OncoStreamApp$$typecreator2$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /opt/spark-job/target/scala-2.12/classes/OncoStreamApp$$typecreator2$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	OncoStreamApp$$typecreator3$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /opt/spark-job/target/scala-2.12/classes/OncoStreamApp$$typecreator3$1.class[0m
 [0m[[0m[0mdebug[0m] [0m[0m	OncoStreamApp$.class[0m
 [0m[[0m[0mdebug[0m] [0m[0m	  /opt/spark-job/target/scala-2.12/classes/OncoStreamApp$.class[0m
 [0m[[0m[0mdebug[0m] [0m[0m	OncoStreamApp.class[0m
