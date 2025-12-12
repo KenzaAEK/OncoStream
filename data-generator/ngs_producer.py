@@ -4,12 +4,23 @@ from kafka import KafkaProducer
 
 # Configuration
 KAFKA_TOPIC = 'ngs-raw-reads'
-SPEED_SECONDS = 0.1  # Très rapide
+SPEED_SECONDS = 0.1  # Vitesse de génération
 
-# Séquences cibles (Mutations réelles du cancer du sein et poumon)
+# ==============================================================================
+# BIOMARQUEURS CIBLES (Source: Illumina TruSight RNA Pan-Cancer & Eurofins)
+# ==============================================================================
 CANCER_SIGNATURES = {
-    'BRCA1_DEL_AG': 'TGTCTTTT',  # Délétion de 2 bases (Cancer du sein)
-    'EGFR_L858R':   'CAAGATCACAGATTTTGGGCTGGCCAAAC' # Mutation (Cancer poumon)
+    # --- Variants Héréditaires (Sein / Ovaire) ---
+    'BRCA1_DEL_AG': 'TGTCGATGG',  # Délétion fréquente BRCA1
+    'BRCA2_INS_T':  'CCTCTAACC',  # Insertion BRCA2
+    
+    # --- Variants Somatiques (Poumon / Mélanome) ---
+    'EGFR_L858R':   'GTGGAGCAC',  # Mutation classique Poumon
+    'BRAF_V600E':   'TAGCTACAG',  # Mutation classique Mélanome/Colon
+    
+    # --- Fusions de Gènes (Structural Variants) ---
+    'FUSION_EML4_ALK':     'GCTTTTTG',  # Fusion critique Poumon (Non-Fumeur)
+    'FUSION_TMPRSS2_ETV1': 'CGGAGGAG'   # Fusion Prostate
 }
 
 def generate_illumina_header(counter):
@@ -27,15 +38,13 @@ def generate_dna_sequence(length=100):
     return ''.join(random.choices(['A', 'C', 'T', 'G'], k=length))
 
 def generate_quality_scores(length=100):
-    """Simule une dégradation de la qualité vers la fin (Réaliste)"""
+    """Simule une dégradation de la qualité vers la fin (Phénomène réel Illumina)"""
     qualities = []
     for i in range(length):
-        # Le début est excellent (Q35-Q40), la fin est moins bonne (Q20-Q30)
-        base_score = 40 - (i / length * 15) 
-        # Ajout d'un peu de bruit aléatoire
+        # Le début est excellent (Q40), la fin dégrade un peu
+        base_score = 40 - (i / length * 10) 
         score = int(base_score + random.randint(-2, 2))
-        # Conversion en ASCII (Phred+33)
-        qualities.append(chr(score + 33))
+        qualities.append(chr(score + 33)) # Conversion ASCII Phred+33
     return ''.join(qualities)
 
 def create_fastq_record(counter):
@@ -43,10 +52,10 @@ def create_fastq_record(counter):
     seq = generate_dna_sequence(length)
     mutation_type = "NONE"
 
-    # Injection de mutation (5% de chance)
-    if random.random() < 0.05:
+    # Injection de mutation (10% de chance pour la démo)
+    if random.random() < 0.10:
         mut_name, mut_seq = random.choice(list(CANCER_SIGNATURES.items()))
-        # Insertion aléatoire
+        # Insertion aléatoire de la signature dans la séquence
         pos = random.randint(10, length - len(mut_seq) - 10)
         seq = seq[:pos] + mut_seq + seq[pos+len(mut_seq):]
         mutation_type = mut_name
@@ -54,12 +63,12 @@ def create_fastq_record(counter):
     qual = generate_quality_scores(len(seq))
     header = generate_illumina_header(counter)
 
-    # Construction FASTQ
+    # Format FASTQ Standard (4 lignes)
     fastq_entry = f"{header}\n{seq}\n+\n{qual}"
     return fastq_entry, mutation_type
 
 def main():
-    print("🧬 Lancement du Séquenceur Illumina (Simulé)...")
+    print("🧬 Lancement du Séquenceur Illumina (Panel TruSight Simulé)...")
     producer = KafkaProducer(bootstrap_servers='localhost:9092')
     
     counter = 0
