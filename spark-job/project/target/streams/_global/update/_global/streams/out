@@ -1,6 +1,8 @@
-[0m[[0m[33mwarn[0m] [0m[0mjline-2.14.6.jar no longer exists at /root/.cache/coursier/v1/https/repo1.maven.org/maven2/jline/jline/2.14.6/jline-2.14.6.jar[0m
+[0m[[0m[33mwarn[0m] [0m[0mscala-xml_2.12-2.3.0.jar no longer exists at /root/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/modules/scala-xml_2.12/2.3.0/scala-xml_2.12-2.3.0.jar[0m
 [0m[[0m[0mdebug[0m] [0m[0mnot up to date. inChanged = false, force = false[0m
 [0m[[0m[0mdebug[0m] [0m[0mUpdating ProjectRef(uri("file:/opt/spark-job/project/"), "spark-job-build")...[0m
+[0m[[0m[0minfo[0m] [0m[0mUpdating spark-job-build[0m
+[0m[[0m[0minfo[0m] [0m[0mResolved spark-job-build dependencies[0m
 [0m[[0m[0minfo[0m] [0m[0mUpdating spark-job-build[0m
 [0m[[0m[0minfo[0m] [0m[0mResolved spark-job-build dependencies[0m
 [0m[[0m[0minfo[0m] [0m[0mFetching artifacts of spark-job-build[0m

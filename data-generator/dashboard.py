@@ -1,65 +1,104 @@
 import streamlit as st
 import happybase
 import pandas as pd
-from datetime import datetime
+import time
 
-# Configuration de la page
 st.set_page_config(page_title="OncoStream Live", page_icon="🧬", layout="wide")
 st.title("🧬 OncoStream - Real-Time Cancer Detection")
 
-# 1. CONNEXION LÉGÈRE À HBASE (Via le port 9090 Thrift)
-@st.cache_resource
-def get_connection():
-    # On se connecte à "localhost" car le port 9090 de Docker est mappé sur ton Windows
-    return happybase.Connection('localhost', port=9090)
+# --- FONCTION DE CONNEXION ROBUSTE ---
+def smart_connect(retries=3, delay=1):
+    """Tente de se connecter à HBase plusieurs fois en cas d'erreur Windows 10053"""
+    for i in range(retries):
+        try:
+            # autoconnect=False permet de contrôler l'ouverture manuellement
+            connection = happybase.Connection('localhost', port=9090, autoconnect=False)
+            connection.open()
+            return connection
+        except Exception as e:
+            if i < retries - 1:
+                # Si ça plante, on attend un peu et on réessaie (le temps que Windows libère le port)
+                time.sleep(delay)
+                continue
+            else:
+                st.error(f"⚠️ Échec connexion HBase après {retries} tentatives: {e}")
+                return None
 
-try:
-    connection = get_connection()
-    table = connection.table('oncostream_realtime') # La table créée tout à l'heure
-except Exception as e:
-    st.error(f"⚠️ Impossible de se connecter à HBase. Vérifie que Docker tourne ! Erreur: {e}")
-    st.stop()
+# 1. TENTATIVE DE CONNEXION
+connection = smart_connect()
+table = None
 
-# 2. RÉCUPÉRATION DES DONNÉES (SCAN)
-# HappyBase scanne la table et nous donne un générateur
-st.write("Fetching live data from HBase...")
-data = []
+if connection:
+    try:
+        table = connection.table('oncostream_realtime')
+        
+        # 2. RÉCUPÉRATION DES DONNÉES
+        # st.write("Fetching live data...") # Commenté pour cleaner l'interface
+        data = []
 
-# On scanne tout (dans un vrai projet prod, on limiterait le scan)
-for key, value in table.scan():
-    # HBase renvoie des bytes (b'valeur'), il faut décoder en string
-    row = {
-        'read_id': key.decode('utf-8'),
-        'mutation': value.get(b'cf1:mutation', b'Unknown').decode('utf-8'),
-        'quality': float(value.get(b'cf1:quality', b'0').decode('utf-8')),
-        'date': value.get(b'cf1:date', b'').decode('utf-8')
-    }
-    data.append(row)
+        # Scan
+        for key, value in table.scan():
+            row = {
+                'read_id': key.decode('utf-8'),
+                'mutation': value.get(b'cf1:mutation', b'Unknown').decode('utf-8'),
+                'quality': float(value.get(b'cf1:quality', b'0').decode('utf-8')),
+                'date': value.get(b'cf1:date', b'').decode('utf-8')
+            }
+            data.append(row)
 
-# Transformation en Pandas pour les graphiques
-df = pd.DataFrame(data)
+        df = pd.DataFrame(data)
 
-# 3. VISUALISATION
-if not df.empty:
-    # Métriques Clés
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Analyses", len(df))
-    col2.metric("Critical Mutations", df[df['mutation'].str.contains("FUSION|BRCA")].shape[0])
-    col3.metric("Avg Quality Score", f"{df['quality'].mean():.2f}")
+        # 3. DASHBOARD
+        if not df.empty:
 
-    # Graphique 1 : Top Mutations
-    st.subheader("📊 Detected Biomarkers Distribution")
-    mutation_counts = df['mutation'].value_counts()
-    st.bar_chart(mutation_counts)
+            # Séparation des données "Pathogènes" (Malades) du "Bruit" (Sains/NONE)
+            pathogenic_df = df[~df['mutation'].isin(['NONE', 'Unknown'])]
 
-    # Tableau des dernières alertes (Exclure les NONE)
-    st.subheader("🚨 Latest Critical Alerts")
-    critical_df = df[df['mutation'] != 'NONE'].sort_values(by='date', ascending=False).head(10)
-    st.dataframe(critical_df[['date', 'mutation', 'quality', 'read_id']], use_container_width=True)
+            # Métriques (Top de page)
+            col1, col2, col3 = st.columns(3)
+            col1.metric("🧬 Total Reads Processed", len(df))
+            
+            critical_count = df[~df['mutation'].isin(['NONE', 'Unknown'])].shape[0]
+            col2.metric("☢️ Pathogenic Mutations", critical_count, delta_color="inverse")
+            
+            avg_qual = df['quality'].mean()
+            col3.metric("✅ Global Quality Score", f"{avg_qual:.2f}", delta=f"{avg_qual-30:.1f}")
 
-else:
-    st.warning("Waiting for data stream... (Launch Python Producer!)")
+            # Layout : Graphique à gauche, Tableau à droite
+            c1, c2 = st.columns([2, 1])
+            
+            with c1:
+                st.subheader("📊 Mutation Type Distribution")
+                if not pathogenic_df.empty:
+                    st.bar_chart(pathogenic_df['mutation'].value_counts(), color="#FF4B4B")
+                else:
+                    st.info("No mutations detected yet (Patients are healthy).")
 
-# Bouton de rafraichissement manuel
-if st.button('Refresh Data 🔄'):
+            with c2:
+                st.subheader("🚨 Priority Alerts")
+                # On affiche les derniers cas critiques détectés
+                if not pathogenic_df.empty:
+                    latest_alerts = pathogenic_df.sort_values(by='date', ascending=False).head(10)
+                    st.dataframe(
+                        latest_alerts[['mutation', 'quality']], 
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                else:
+                    st.success("✅ No critical alerts.")
+        else:
+            st.info("Waiting for data stream... Start the Python Producer!")
+
+    except Exception as e:
+        st.error(f"Erreur lecture: {e}")
+    
+    finally:
+        # FERMETURE PROPRE OBLIGATOIRE
+        try:
+            connection.close()
+        except:
+            pass
+
+# Bouton Refresh manuel (utile pour la démo)
+if st.button('Actualiser les données 🔄', type="primary"):
     st.rerun()

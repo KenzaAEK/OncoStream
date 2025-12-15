@@ -75,7 +75,7 @@ object OncoStreamApp {
     // B. BONUS : SORTIE HBASE (Temps-Réel / Médecin)
     // On n'envoie vers HBase QUE les mutations détectées (pour ne pas saturer)
     val hbaseQuery = parsedData
-      .filter(col("mutation_detected") =!= "NONE")
+      //.filter(col("mutation_detected") =!= "NONE")
       .writeStream
       .foreachBatch { (batchDF: org.apache.spark.sql.Dataset[org.apache.spark.sql.Row], batchId: Long) =>
         
