@@ -1,0 +1,60 @@
+image: docker:latest
+
+services:
+  - docker:dind
+
+stages:
+  - build
+  - test
+
+variables:
+  # Optimisation Docker pour éviter de tout retélécharger à chaque fois
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+before_script:
+  # On installe docker-compose car l'image de base ne l'a pas toujours
+  - apk add --no-cache docker-compose
+  # On se connecte au registre (si besoin plus tard, pour l'instant optionnel)
+  - docker info
+  - docker-compose --version
+
+# --- ÉTAPE 1 : CONSTRUCTION ---
+build_images:
+  stage: build
+  script:
+    - echo "🏗️ Construction des images Docker..."
+    - docker-compose --profile bonus build
+  # On garde les images en cache pour l'étape suivante (optionnel mais plus rapide)
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes:
+        - Dockerfile
+        - docker-compose.yml
+        - "**/*.py"
+        - "**/*.scala"
+
+# --- ÉTAPE 2 : TESTS D'INTÉGRATION ---
+test_pipeline:
+  stage: test
+  script:
+    - echo "🚀 Démarrage de l'environnement complet..."
+    - docker-compose --profile bonus up -d
+
+    - echo "⏳ Attente de la stabilisation des services (30s)..."
+    - sleep 30
+
+    - echo "🛠️ Initialisation de la table HBase..."
+    - docker exec -i hbase hbase shell < hbase-config/init-script.txt
+
+    - echo "🧬 Lancement du test Producer (Génération de données)..."
+    # On lance le producer en mode test (durée limitée 10s)
+    - docker run --network oncostream-net --env KAFKA_BOOTSTRAP_SERVERS=kafka:29092 oncostream-producer --duration 10
+
+    - echo "✅ Vérification que HBase a reçu des données..."
+    # On scanne la table. Si elle est vide ou n'existe pas, le grep échouera
+    - docker exec -i hbase hbase shell <<< "scan 'oncostream_realtime'" | grep "row(s)"
+
+  after_script:
+    - echo "🧹 Nettoyage de l'environnement..."
+    - docker-compose --profile bonus down

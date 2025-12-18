@@ -1,0 +1,3 @@
+create 'oncostream_realtime', 'cf1'
+list
+exit
