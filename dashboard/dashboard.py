@@ -2,26 +2,36 @@ import streamlit as st
 import happybase
 import pandas as pd
 import time
+import os  
 
 st.set_page_config(page_title="OncoStream Live", page_icon="🧬", layout="wide")
 st.title("🧬 OncoStream - Real-Time Cancer Detection")
 
 # --- FONCTION DE CONNEXION ROBUSTE ---
 def smart_connect(retries=3, delay=1):
-    """Tente de se connecter à HBase plusieurs fois en cas d'erreur Windows 10053"""
+    """Tente de se connecter à HBase (Compatible Docker & Local)"""
+    
+    # On récupère l'adresse définie dans docker-compose.yml, sinon 'localhost' par défaut
+    host = os.getenv('HBASE_HOST', 'localhost')
+    port = int(os.getenv('HBASE_PORT', 9090))
+    
     for i in range(retries):
         try:
-            # autoconnect=False permet de contrôler l'ouverture manuellement
-            connection = happybase.Connection('localhost', port=9090, autoconnect=False)
+            # On affiche (dans les logs Docker) où on essaie de se connecter
+            print(f"🔌 Tentative de connexion HBase vers {host}:{port} (Essai {i+1}/{retries})...")
+            
+            connection = happybase.Connection(host, port=port, autoconnect=False)
             connection.open()
+            print("✅ Connexion HBase réussie !")
             return connection
         except Exception as e:
+            print(f"❌ Erreur : {e}")
             if i < retries - 1:
-                # Si ça plante, on attend un peu et on réessaie (le temps que Windows libère le port)
                 time.sleep(delay)
                 continue
             else:
-                st.error(f"⚠️ Échec connexion HBase après {retries} tentatives: {e}")
+                # On affiche l'erreur dans l'interface Web pour t'aider à débugger
+                st.error(f"⚠️ Impossible de joindre HBase à l'adresse `{host}:{port}`. Erreur: {e}")
                 return None
 
 # 1. TENTATIVE DE CONNEXION

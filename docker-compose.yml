@@ -5,7 +5,7 @@ networks:
     driver: bridge
 
 services:
-  # ===== 1. COUCHE KAFKA (Migration vers Confluent) =====
+  # ===== 1. COUCHE KAFKA =====
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
@@ -30,7 +30,6 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      # Configuration critique pour l'accès Extérieur (Windows) ET Intérieur (Spark)
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
@@ -38,8 +37,14 @@ services:
     networks:
       - oncostream-net
     mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s     # On augmente le temps de réponse autorisé
+      retries: 10      # On tente 10 fois (donc ~100 secondes au total)
+      start_period: 40s # IMPORTANT : On attend 40s avant le tout premier test
 
-  # ===== 2. COUCHE HDFS (Standard BDE2020) =====
+  # ===== 2. COUCHE HDFS =====
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     container_name: namenode
@@ -71,7 +76,7 @@ services:
       - oncostream-net
     mem_limit: 1.5g
 
-  # ===== 3. COUCHE SPARK (Image Apache Officielle) =====
+  # ===== 3. COUCHE SPARK =====
   spark-master:
     image: apache/spark:3.5.3
     container_name: spark-master
@@ -80,16 +85,13 @@ services:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
     ports:
       - "8080:8080"
       - "7077:7077"
       - "4040:4040"
-      - "10000:10000" # Thrift Server
+      - "10000:10000"
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
-      - ./projet:/opt/spark/work
       - ./spark-job:/opt/spark/work
     networks:
       - oncostream-net
@@ -108,28 +110,30 @@ services:
     depends_on:
       - spark-master
     volumes:
-      - ./projet:/opt/spark/work
       - ./spark-job:/opt/spark/work
     networks:
       - oncostream-net
     mem_limit: 2g
 
-# ===== 4. BONUS HBASE (Activé seulement si profil 'bonus') =====
+# ===== 4. HBASE (Corrigé avec Config Forcée) =====
   hbase:
     image: harisekhon/hbase:2.1
     container_name: hbase
     hostname: hbase
     environment:
-      # CONFIGURATION ZOOKEEPER 
-      - HBASE_MANAGES_ZK=false       # HBase gère son propre Zookeeper interne                        
-      - HBASE_CONF_hbase_zookeeper_quorum=zookeeper         
-      - HBASE_CONF_hbase_zookeeper_property_clientPort=2181
-      # Configuration Stockage
-      - HBASE_CONF_hbase_rootdir=hdfs://namenode:9000/hbase
-      - HBASE_CONF_hbase_cluster_distributed=true
+      - HBASE_MANAGES_ZK=false
     ports:
-      - "16010:16010" # Web UI
-      - "9090:9090" # Thrift
+      - "16010:16010"
+      - "9090:9090"
+    volumes:
+      - ./hbase-config/hbase-site.xml:/hbase/conf/hbase-site.xml
+    entrypoint: >
+      /bin/bash -c "
+      /hbase/bin/hbase-daemon.sh start master &&
+      /hbase/bin/hbase-daemon.sh start regionserver &&
+      /hbase/bin/hbase-daemon.sh start thrift &&
+      tail -f /hbase/logs/*
+      "
     depends_on:
       - zookeeper
       - namenode
@@ -139,20 +143,72 @@ services:
     mem_limit: 2g
     profiles:
       - bonus
-# ===== CONTENEUR DE BUILD =====
+
+  # ===== 5. BUILD SPARK (SBT) =====
   spark-sbt:
-    build: .
+    build:
+      context: ./spark-job
+      dockerfile: Dockerfile
     container_name: spark-sbt
     volumes:
       - ./spark-job:/opt/spark-job
       - sbt_cache:/root/.sbt
+      - ivy_cache:/root/.ivy2
     working_dir: /opt/spark-job
     networks:
       - oncostream-net
     command: tail -f /dev/null
 
+  # ===== 6. PRODUCER NGS (NOUVEAU) =====
+  producer:
+    build:
+      context: ./data-generator
+      dockerfile: Dockerfile
+    image: oncostream/producer:latest
+    container_name: oncostream-producer
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC=ngs-raw-reads
+      - PRODUCER_RATE=${PRODUCER_RATE:-10}
+      - PRODUCER_DURATION=${PRODUCER_DURATION:-0}
+    volumes:
+      - ./data-generator:/app
+    networks:
+      - oncostream-net
+    restart: unless-stopped
+    mem_limit: 512m
+    # Optionnel: Lancer en mode stress test
+    # command: ["--rate", "100", "--duration", "3600"]
+
+  # ===== 7. DASHBOARD STREAMLIT (NOUVEAU) =====
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    image: oncostream/dashboard:latest
+    container_name: oncostream-dashboard
+    depends_on:
+      - hbase
+    environment:
+      - HBASE_HOST=hbase
+      - HBASE_PORT=9090
+      - HDFS_NAMENODE=hdfs://namenode:9000
+      - STREAMLIT_SERVER_PORT=8501
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./dashboard:/app
+    networks:
+      - oncostream-net
+    restart: unless-stopped
+    mem_limit: 512m
+    profiles:
+      - bonus
+
 volumes:
-  kafka_data:
   namenode_data:
   datanode_data:
   sbt_cache:

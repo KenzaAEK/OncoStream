@@ -1,10 +1,21 @@
-kafka-python-ng
-faker  # Pour générer des noms de patients réalistes plus tard
-numpy  # Pour simuler des stats biologiques
-streamlit 
-happybase
-pandas
-datetime
+# ===== PRODUCER NGS - DÉPENDANCES =====
+# Version: 1.0.0
+# Python: 3.10+
+
+# Kafka Client (Version NG plus maintenue)
+kafka-python-ng==2.2.2
+
+# Génération de données
+Faker==20.1.0
+numpy==1.26.2
+
+# Utilitaires
+python-dotenv==1.0.0
+
+# Tests (pour CI/CD)
+pytest==7.4.3
+pytest-mock==3.12.0
+
 
 # Instructions pour créer un environnement virtuel Python et installer les dépendances
 

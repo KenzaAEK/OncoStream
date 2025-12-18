@@ -85,7 +85,7 @@ object OncoStreamApp {
           
           // 1. Configurer la connexion HBase (Localisée dans le conteneur)
           val conf = HBaseConfiguration.create()
-          conf.set("hbase.zookeeper.quorum", "hbase")
+          conf.set("hbase.zookeeper.quorum", "zookeeper")
           conf.set("hbase.zookeeper.property.clientPort", "2181")
           conf.set("zookeeper.znode.parent", "/hbase")
           

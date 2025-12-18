@@ -2,21 +2,24 @@ import time
 import argparse
 import random
 import sys
+import os  # <--- Indispensable pour lire les variables Docker
 from kafka import KafkaProducer
 
-# Configuration par défaut (si aucun argument n'est donné)
-DEFAULT_TOPIC = 'ngs-raw-reads'
+# Configuration par défaut
+# On cherche d'abord la variable Docker, sinon on met 'localhost' pour tes tests hors Docker
+DEFAULT_KAFKA_SERVER = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+DEFAULT_TOPIC = os.getenv('KAFKA_TOPIC', 'ngs-raw-reads')
 
 # ==============================================================================
-# BIOMARQUEURS CIBLES (Source: Illumina TruSight RNA Pan-Cancer & Eurofins)
+# BIOMARQUEURS CIBLES
 # ==============================================================================
 CANCER_SIGNATURES = {
-    'BRCA1_DEL_AG': 'TGTCGATGG',  # Délétion fréquente BRCA1
-    'BRCA2_INS_T':  'CCTCTAACC',  # Insertion BRCA2
-    'EGFR_L858R':   'GTGGAGCAC',  # Mutation classique Poumon
-    'BRAF_V600E':   'TAGCTACAG',  # Mutation classique Mélanome/Colon
-    'FUSION_EML4_ALK':     'GCTTTTTG',  # Fusion critique Poumon
-    'FUSION_TMPRSS2_ETV1': 'CGGAGGAG'   # Fusion Prostate
+    'BRCA1_DEL_AG': 'TGTCGATGG',
+    'BRCA2_INS_T':  'CCTCTAACC',
+    'EGFR_L858R':   'GTGGAGCAC',
+    'BRAF_V600E':   'TAGCTACAG',
+    'FUSION_EML4_ALK':     'GCTTTTTG',
+    'FUSION_TMPRSS2_ETV1': 'CGGAGGAG'
 }
 
 def generate_illumina_header(counter):
@@ -45,7 +48,6 @@ def create_fastq_record(counter):
     seq = generate_dna_sequence(length)
     mutation_type = "NONE"
 
-    # Injection de mutation (10% de chance)
     if random.random() < 0.10:
         mut_name, mut_seq = random.choice(list(CANCER_SIGNATURES.items()))
         pos = random.randint(10, length - len(mut_seq) - 10)
@@ -58,30 +60,33 @@ def create_fastq_record(counter):
     return fastq_entry, mutation_type
 
 def main():
-    # --- GESTION DES ARGUMENTS LIGNE DE COMMANDE ---
+    # --- GESTION DES ARGUMENTS ---
     parser = argparse.ArgumentParser(description="Générateur de données NGS pour Stress Test")
-    parser.add_argument("--rate", type=float, default=10.0, help="Nombre de messages par seconde (défaut: 10)")
+    parser.add_argument("--rate", type=float, default=10.0, help="Nombre de messages par seconde")
     parser.add_argument("--duration", type=int, default=0, help="Durée du test en secondes (0 = infini)")
+    # On permet de surcharger l'adresse Kafka via argument si besoin
+    parser.add_argument("--bootstrap", type=str, default=DEFAULT_KAFKA_SERVER, help="Adresse serveur Kafka")
     args = parser.parse_args()
 
-    # Calcul du délai entre les messages
     sleep_time = 1.0 / args.rate if args.rate > 0 else 0
-    
-    # Calcul du temps de fin
     start_time = time.time()
     end_time = start_time + args.duration if args.duration > 0 else float('inf')
 
     print(f"🧬 Lancement du Séquenceur Illumina (Simulé)")
+    print(f"   🎯 Serveur Kafka : {args.bootstrap}")
     print(f"   ⚙️  Vitesse : {args.rate} msg/sec")
     print(f"   ⏱️  Durée   : {'Infini' if args.duration == 0 else f'{args.duration} secondes'}")
 
+    # --- CONNEXION KAFKA ROBUSTE ---
+    producer = None
     try:
         producer = KafkaProducer(
-            bootstrap_servers='localhost:9092',
-            api_version=(0, 10, 1)  # <--- On force une version compatible (hack classique)
+            bootstrap_servers=args.bootstrap,
+            # api_version=(0, 10, 1) # Supprimé car souvent auto-détecté, remets-le si erreur "NoBrokersAvailable"
         )
     except Exception as e:
-        print(f"❌ Erreur connexion Kafka: {e}")
+        print(f"❌ CRASH INITIAL : Impossible de joindre Kafka à {args.bootstrap}")
+        print(f"❌ Erreur : {e}")
         return
 
     counter = 0
@@ -90,21 +95,18 @@ def main():
             counter += 1
             fastq, mut = create_fastq_record(counter)
             
-            # Envoi Kafka
+            # Envoi vers le topic défini
             producer.send(DEFAULT_TOPIC, fastq.encode('utf-8'))
             
-            # Logs (on réduit le bruit si on va très vite)
             if args.rate < 50:
                 if mut != "NONE":
                     print(f"[{counter}] ⚠️  ALERTE: {mut}")
                 elif counter % 10 == 0:
                     print(f"[{counter}] ...")
             else:
-                # Mode Stress Test (moins de logs pour ne pas ralentir)
                 if counter % 1000 == 0:
                     print(f"🚀 [{counter}] messages envoyés...")
             
-            # Contrôle de la vitesse
             time.sleep(sleep_time)
 
         print(f"✅ Fin du test. Total généré : {counter} reads.")
@@ -112,7 +114,8 @@ def main():
     except KeyboardInterrupt:
         print("\nArrêt manuel.")
     finally:
-        producer.close()
+        if producer:
+            producer.close()
 
 if __name__ == "__main__":
     main()

@@ -1,7 +1,5 @@
-# ===============================
 # DOCKERFILE : IMAGE DE BUILD
 # Pour compiler les jobs Spark (Scala)
-# ===============================
 
 # 1. Base stable OpenJDK officielle
 FROM eclipse-temurin:11-jdk-focal

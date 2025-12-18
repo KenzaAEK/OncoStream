@@ -1,10 +1,30 @@
-kafka-python-ng
-faker  # Pour générer des noms de patients réalistes plus tard
-numpy  # Pour simuler des stats biologiques
-streamlit 
-happybase
-pandas
-datetime
+# ===== DASHBOARD STREAMLIT - DÉPENDANCES =====
+# Version: 1.0.0
+# Python: 3.10+
+
+# Framework Dashboard
+streamlit==1.29.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.2
+
+# Connexion HBase
+happybase==1.2.0
+thriftpy2==0.5.1
+
+# Connexion Spark (lecture HDFS optionnelle)
+pyspark==3.5.0
+
+# Visualisation
+plotly==5.18.0
+
+# Utilitaires
+python-dotenv==1.0.0
+
+# Tests
+pytest==7.4.3
+
 
 # Instructions pour créer un environnement virtuel Python et installer les dépendances
 
