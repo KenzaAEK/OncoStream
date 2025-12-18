@@ -40,7 +40,7 @@ full_pipeline:
     # 4. TEST DU PRODUCER
     - echo "🧬 Lancement du test Producer..."
     # On utilise le réseau du docker-compose (défini par COMPOSE_PROJECT_NAME)
-    - docker run --network oncostream-ci_oncostream-net --env KAFKA_BOOTSTRAP_SERVERS=kafka:29092 oncostream-producer --duration 10
+    - docker-compose --profile bonus run --rm -e KAFKA_BOOTSTRAP_SERVERS=kafka:29092 oncostream-producer --duration 10
 
     # 5. VÉRIFICATION FINALE (Correction du <<< ici)
     - echo "✅ Vérification des données dans HBase..."
