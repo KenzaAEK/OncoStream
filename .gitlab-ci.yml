@@ -136,7 +136,7 @@ integration:full-stack:
   services:
     - docker:dind
   script:
-    - "echo '🏗️ Démarrage de l\'infrastructure complète...'"
+    - "echo '🏗️ Démarrage de infrastructure complète...'"
     # Utilisation de --build pour être sûr d'avoir la dernière version
     - "docker-compose --profile bonus up -d --build"
     
@@ -155,7 +155,7 @@ integration:full-stack:
     - "echo \"scan 'oncostream_realtime'\" | docker exec -i hbase hbase shell | grep \"row(s)\""
     
   after_script:
-    - "echo '🧹 Nettoyage de l\'environnement de test...'"
+    - "echo '🧹 Nettoyage de environnement de test...'"
     - "docker-compose --profile bonus down -v"
   only:
     - main
