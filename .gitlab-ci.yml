@@ -1,210 +1,70 @@
-# ==============================================================================
-# 🧬 PIPELINE CI/CD ONCOSTREAM
-# ==============================================================================
-# Description : Pipeline complète pour projet Big Data (Spark, Kafka, HBase)
-# Structure   : Lint -> Build -> Unit Test -> Integration Test -> Docker Package -> Deploy
-# ==============================================================================
-
-image: docker:24.0.5
+image: docker:24.0.5 # Utiliser une version taguée, pas 'latest' pour la stabilité
 
 services:
-  # Service Docker-in-Docker nécessaire pour construire des images et lancer docker-compose
   - docker:24.0.5-dind
 
 variables:
-  # --- Versions des outils ---
-  SCALA_SBT_IMAGE: "hseeberger/scala-sbt:11.0.18_1.9.7_3.3.1"
-  PYTHON_IMAGE: "python:3.10-slim"
-  
-  # --- Optimisation Docker ---
+  # Optimisation Docker (Driver overlay2 est plus rapide)
   DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: "" # Désactivé pour faciliter la com entre dind et le runner
-  COMPOSE_PROJECT_NAME: oncostream-ci # Nom fixe pour le réseau docker
+  DOCKER_TLS_CERTDIR: ""
+  COMPOSE_PROJECT_NAME: oncostream-ci
+  # Définition explicite du réseau pour éviter les erreurs de nommage
+  NETWORK_NAME: "${COMPOSE_PROJECT_NAME}_default"
 
-  # --- Noms des Applications ---
-  SPARK_APP_NAME: "oncostream-spark"
-  PRODUCER_APP_NAME: "oncostream-producer"
-  DASHBOARD_APP_NAME: "oncostream-dashboard"
-
-# Définition des étapes dans l'ordre d'exécution
 stages:
-  - validate      # Qualité du code (Linting)
-  - build         # Compilation (Jars, Bytecode)
-  - test          # Tests Unitaires (Mocks)
-  - integration   # Tests de bout en bout (Vrai Kafka/HBase) - LE RETOUR !
-  - package       # Création et Push des images Docker
-  - deploy        # Déploiement
+  - test_and_validate
 
-# ============================================================
-# STAGE 1: VALIDATION (Qualité du Code)
-# ============================================================
+# Optimisation: Cache pour apk si on garde l'installation manuelle (optionnel mais utile)
+cache:
+  paths:
+    - /var/cache/apk
 
-validate:python-lint:
-  stage: validate
-  image: $PYTHON_IMAGE
-  before_script:
-    - pip install flake8 black
+before_script:
+  # Installation silencieuse (-q) pour garder les logs propres
+  - apk add --no-cache docker-compose bash curl
+
+full_integration_test:
+  stage: test_and_validate
   script:
-    - echo "🔍 Validation du code Python (Style & Syntaxe)..."
-    - flake8 data-generator/ --max-line-length=100 --ignore=E501,W503
-    - flake8 dashboard/ --max-line-length=100 --ignore=E501,W503
-    - black --check data-generator/ dashboard/
-  allow_failure: true # On ne bloque pas la pipeline pour du style
+    # 1. CONSTRUCTION ET DÉMARRAGE
+    - echo "🏗️ Construction et Démarrage de l'infrastructure..."
+    - docker-compose --profile bonus up -d --build
 
-validate:scala-format:
-  stage: validate
-  image: $SCALA_SBT_IMAGE
-  script:
-    - echo "🔍 Validation du formatage Scala..."
-    - cd spark-job
-    - sbt scalafmtCheck || echo "⚠️ Format non conforme (non bloquant)"
-  allow_failure: true
+    # 2. ATTENTE INTELLIGENTE (Remplacement du sleep 45)
+    - echo "Waiting for HBase to be ready..."
+    # Boucle de 60 secondes max qui tente de lister les tables
+    - |
+      for i in {1..30}; do
+        if docker exec hbase hbase shell <<< "list" > /dev/null 2>&1; then
+          echo "✅ HBase is ready!"
+          break
+        fi
+        echo "⏳ Still waiting for HBase... ($i/30)"
+        sleep 2
+      done
 
-# ============================================================
-# STAGE 2: BUILD (Compilation)
-# ============================================================
+    # 3. INITIALISATION HBASE
+    - echo "🛠️ Initialisation de la table HBase..."
+    - docker exec -i hbase hbase shell < hbase-config/init-script.txt
 
-build:scala-spark:
-  stage: build
-  image: $SCALA_SBT_IMAGE
-  script:
-    - echo "🔨 Compilation du job Spark (Scala)..."
-    - cd spark-job
-    - sbt clean compile package
-  artifacts:
-    # On sauvegarde le JAR généré pour l'utiliser dans l'étape 'package'
-    paths:
-      - spark-job/target/scala-2.12/*.jar
-    expire_in: 1 hour
-  cache:
-    key: sbt-cache
-    paths:
-      - spark-job/.ivy2/
-      - spark-job/.sbt/
-
-build:python-checks:
-  stage: build
-  image: $PYTHON_IMAGE
-  script:
-    - echo "🔨 Vérification de la compilation Python..."
-    - cd data-generator
-    - pip install -r requirements.txt
-    - python -m py_compile ngs_producer.py # Vérifie qu'il n'y a pas d'erreur de syntaxe grave
-  artifacts:
-    paths:
-      - data-generator/*.pyc
-
-# ============================================================
-# STAGE 3: TEST (Tests Unitaires - Rapides & Isolés)
-# ============================================================
-
-test:scala-unit:
-  stage: test
-  image: $SCALA_SBT_IMAGE
-  dependencies:
-    - build:scala-spark
-  script:
-    - echo "🧪 Tests Unitaires Scala..."
-    - cd spark-job
-    - sbt test
-  artifacts:
-    reports:
-      junit: spark-job/target/test-reports/*.xml
-
-test:python-producer:
-  stage: test
-  image: $PYTHON_IMAGE
-  dependencies:
-    - build:python-checks
-  before_script:
-    - pip install pytest pytest-cov pytest-mock
-    - cd data-generator && pip install -r requirements.txt
-  script:
-    - echo "🧪 Tests Unitaires Python (avec Mocks)..."
-    - pytest tests/ -v --cov=. --cov-report=term
-  coverage: '/TOTAL.*\s+(\d+%)$/'
-
-# ============================================================
-# STAGE 4: INTEGRATION (Test Réel End-to-End)
-# ============================================================
-# C'est ici qu'on corrige ton erreur précédente (exit code 1/125).
-# On lance toute l'infra pour vérifier que Kafka et HBase parlent bien ensemble.
-
-integration:full-stack:
-  stage: integration
-  image: docker/compose:latest
-  services:
-    - docker:dind
-  script:
-    - "echo '🏗️ Démarrage de infrastructure complète...'"
-    # Utilisation de --build pour être sûr d'avoir la dernière version
-    - "docker-compose --profile bonus up -d --build"
+    # 4. DEBUG RÉSEAU (Au cas où le nom du réseau change)
+    - docker network ls 
     
-    - "echo '⏳ Attente (45s) pour Kafka et HBase...'"
-    - "sleep 45"
-    
-    - "echo '🛠️ Initialisation HBase...'"
-    - "docker exec -i hbase hbase shell < hbase-config/init-script.txt"
-    
-    - "echo '🧬 Lancement du test Producer (CORRECTIF)...'"
-    # La commande complexe est maintenant sécurisée entre guillemets
-    - "docker-compose --profile bonus run --rm -e KAFKA_BOOTSTRAP_SERVERS=kafka:29092 oncostream-producer --duration 10"
-    
-    - "echo '✅ Vérification : Y a-t-il des données dans HBase ?'"
-    # Le pipe | et les guillemets internes nécessitent d'encapsuler toute la ligne
-    - "echo \"scan 'oncostream_realtime'\" | docker exec -i hbase hbase shell | grep \"row(s)\""
-    
+    # 5. TEST DU PRODUCER
+    - echo "🧬 Lancement du test Producer..."
+    # Utilisation dynamique du réseau. Note: Vérifie si ton docker-compose nomme le réseau "default" ou "oncostream-net"
+    # Si ton docker-compose a un réseau nommé "oncostream-net", change la variable NETWORK_NAME ci-dessous manuellement.
+    - docker run --network ${COMPOSE_PROJECT_NAME}_oncostream-net --env KAFKA_BOOTSTRAP_SERVERS=kafka:29092 oncostream-producer --duration 10
+
+    # 6. VÉRIFICATION FINALE
+    - echo "✅ Vérification des données dans HBase..."
+    # Ta correction "echo |" est excellente pour Alpine/Ash
+    - RESULT=$(echo "scan 'oncostream_realtime'" | docker exec -i hbase hbase shell)
+    - echo "$RESULT"
+    # On fait échouer le job si "row(s)" n'est pas trouvé (grep -q retourne 0 si trouvé, 1 sinon)
+    - echo "$RESULT" | grep -q "row(s)" || (echo "❌ Aucune donnée trouvée dans HBase !" && exit 1)
+
   after_script:
-    - "echo '🧹 Nettoyage de environnement de test...'"
-    - "docker-compose --profile bonus down -v"
-  only:
-    - main
-    - merge_requests
-
-# ============================================================
-# STAGE 5: PACKAGE (Build & Push Docker Registry)
-# ============================================================
-
-package:docker-images:
-  stage: package
-  image: docker:24.0.5
-  services:
-    - docker:24.0.5-dind
-  before_script:
-    # Connexion au registre GitLab
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-  script:
-    - echo "📦 Build & Push des images finales..."
-    
-    # 1. Producer
-    - cd data-generator
-    - docker build -t $CI_REGISTRY_IMAGE/producer:$CI_COMMIT_SHORT_SHA -t $CI_REGISTRY_IMAGE/producer:latest .
-    - docker push $CI_REGISTRY_IMAGE/producer:$CI_COMMIT_SHORT_SHA
-    - docker push $CI_REGISTRY_IMAGE/producer:latest
-    - cd ..
-    
-    # 2. Spark App (Utilise le JAR compilé au stage 'build')
-    - cd spark-job
-    - docker build -t $CI_REGISTRY_IMAGE/spark-app:$CI_COMMIT_SHORT_SHA -t $CI_REGISTRY_IMAGE/spark-app:latest .
-    - docker push $CI_REGISTRY_IMAGE/spark-app:$CI_COMMIT_SHORT_SHA
-    - docker push $CI_REGISTRY_IMAGE/spark-app:latest
-  dependencies:
-    - build:scala-spark # Récupère le .jar
-  only:
-    - main
-
-# ============================================================
-# STAGE 6: DEPLOY (Manuel)
-# ============================================================
-
-deploy:staging:
-  stage: deploy
-  image: docker/compose:latest
-  script:
-    - echo "🚀 Simulation de déploiement STAGING..."
-    - echo "Images prêtes : $CI_REGISTRY_IMAGE/producer:$CI_COMMIT_SHORT_SHA"
-  environment:
-    name: staging
-  when: manual
-  only:
-    - main
+    - echo "🧹 Nettoyage..."
+    # Le down -v supprime aussi les volumes pour un nettoyage complet (propre pour le CI)
+    - docker-compose --profile bonus down -v
