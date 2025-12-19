@@ -1,4 +1,4 @@
-image: docker:24.0.5 # Utiliser une version taguée, pas 'latest' pour la stabilité
+image: docker:24.0.5 
 
 services:
   - docker:24.0.5-dind
@@ -34,8 +34,8 @@ full_integration_test:
     - echo "Waiting for HBase to be ready..."
     # Boucle de 60 secondes max qui tente de lister les tables
     - |
-      for i in {1..30}; do
-        if docker exec hbase hbase shell <<< "list" > /dev/null 2>&1; then
+      for i in $(seq 1 30); do
+        if echo "list" | docker exec -i hbase hbase shell > /dev/null 2>&1; then
           echo "✅ HBase is ready!"
           break
         fi
