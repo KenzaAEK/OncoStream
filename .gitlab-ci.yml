@@ -136,29 +136,27 @@ integration:full-stack:
   services:
     - docker:dind
   script:
-    - echo "🏗️ Démarrage de l'infrastructure complète..."
-    # On build les images locales pour le test
-    - docker-compose --profile bonus up -d --build
+    - "echo '🏗️ Démarrage de l\'infrastructure complète...'"
+    # Utilisation de --build pour être sûr d'avoir la dernière version
+    - "docker-compose --profile bonus up -d --build"
     
-    - echo "⏳ Attente (45s) pour Kafka et HBase..."
-    - sleep 45
+    - "echo '⏳ Attente (45s) pour Kafka et HBase...'"
+    - "sleep 45"
     
-    - echo "🛠️ Initialisation HBase..."
-    - docker exec -i hbase hbase shell < hbase-config/init-script.txt
+    - "echo '🛠️ Initialisation HBase...'"
+    - "docker exec -i hbase hbase shell < hbase-config/init-script.txt"
     
-    - echo "🧬 Lancement du test Producer (CORRECTIF)..."
-    # IMPORTANT : On utilise 'docker-compose run' au lieu de 'docker run'.
-    # Cela gère automatiquement le réseau (network) et les variables d'environnement.
-    # --rm supprime le conteneur après le test.
-    - docker-compose --profile bonus run --rm -e KAFKA_BOOTSTRAP_SERVERS=kafka:29092 oncostream-producer --duration 10
+    - "echo '🧬 Lancement du test Producer (CORRECTIF)...'"
+    # La commande complexe est maintenant sécurisée entre guillemets
+    - "docker-compose --profile bonus run --rm -e KAFKA_BOOTSTRAP_SERVERS=kafka:29092 oncostream-producer --duration 10"
     
-    - echo "✅ Vérification : Y a-t-il des données dans HBase ?"
-    # On scanne la table et on vérifie qu'on a au moins 1 ligne
-    - echo "scan 'oncostream_realtime'" | docker exec -i hbase hbase shell | grep "row(s)"
+    - "echo '✅ Vérification : Y a-t-il des données dans HBase ?'"
+    # Le pipe | et les guillemets internes nécessitent d'encapsuler toute la ligne
+    - "echo \"scan 'oncostream_realtime'\" | docker exec -i hbase hbase shell | grep \"row(s)\""
     
   after_script:
-    - echo "🧹 Nettoyage de l'environnement de test..."
-    - docker-compose --profile bonus down -v
+    - "echo '🧹 Nettoyage de l\'environnement de test...'"
+    - "docker-compose --profile bonus down -v"
   only:
     - main
     - merge_requests
